@@ -1,3 +1,4 @@
 .envrc
+mod-build
 # Added by goreleaser init:
 dist/
