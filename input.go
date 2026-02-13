@@ -19,5 +19,6 @@ func yesOrNo(override bool, prompt string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return strings.ToLower(text) == "y\n" || strings.ToLower(text) == "yes\n", nil
+	trimmed := strings.ToLower(strings.TrimSpace(text))
+	return trimmed == "y" || trimmed == "yes", nil
 }
