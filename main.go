@@ -92,21 +92,38 @@ func main() {
 	}
 
 	for _, path := range task.Copy {
-		if outputManifest[path] == task.Manifest[path] {
-			fmt.Printf("⏭️ Skipping   : %q\n", path)
-			continue
+		if outputManifest[path].SourceHash == task.Manifest[path].SourceHash {
+			hash, err := output.Hash(path)
+			must(err)
+			if hash == outputManifest[path].SourceHash {
+				fmt.Printf("⏭️ Unchanged  : %q\n", path)
+				continue
+			}
 		}
 		fmt.Printf("📄 Copying    : %q\n", path)
 		must(output.Copy(source.RealPath(path), path))
 	}
 
-	for _, path := range task.Copy {
-		if outputManifest[path] == task.Manifest[path] {
-			fmt.Printf("⏭️ Unchanged  : %q\n", path)
-			continue
+	for _, path := range task.Convert {
+		if outputManifest[path].SourceHash == task.Manifest[path].SourceHash {
+			hash, err := output.Hash(outputManifest[path].OutputPath)
+			must(err)
+			if hash == outputManifest[path].OutputHash {
+				entry := task.Manifest[path]
+				entry.OutputPath = outputManifest[path].OutputPath
+				entry.OutputHash = outputManifest[path].OutputHash
+				task.Manifest[path] = entry
+				fmt.Printf("⏭️ Unchanged  : %q\n", path)
+				continue
+			}
 		}
 		fmt.Printf("🔁 Converting : %q\n", path)
-		must(output.Convert(source.RealPath(path), path, *imgToPaaPath))
+		outputPath, outputHash, err := output.Convert(source.RealPath(path), path, *imgToPaaPath)
+		must(err)
+		entry := task.Manifest[path]
+		entry.OutputPath = outputPath
+		entry.OutputHash = outputHash
+		task.Manifest[path] = entry
 	}
 
 	err = output.WriteManifest(task.Manifest)

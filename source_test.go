@@ -91,9 +91,9 @@ func TestSource_Prepare(t *testing.T) {
 		// Verify manifest entries exist
 		assert.Len(t, task.Manifest, len(testFiles))
 		for _, file := range testFiles {
-			hash, exists := task.Manifest[file]
+			entry, exists := task.Manifest[file]
 			assert.True(t, exists, "manifest should contain %s", file)
-			assert.Len(t, hash, 16, "hash should be 16 characters (8 bytes in hex)")
+			assert.Len(t, entry.SourceHash, 16, "hash should be 16 characters (8 bytes in hex)")
 		}
 	})
 

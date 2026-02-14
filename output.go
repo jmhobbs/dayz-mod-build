@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"hash/fnv"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -57,12 +59,37 @@ func (o *Output) Copy(src, dst string) error {
 	return copyFileWithPath(src, filepath.Join(o.path, dst))
 }
 
-func (o *Output) Convert(src, dst, imgToPaaPath string) error {
-	return convertWithPath(
+func (o *Output) Hash(path string) (string, error) {
+	hash := fnv.New64a()
+
+	f, err := os.Open(filepath.Join(o.path, path))
+	if err != nil {
+		return "", fmt.Errorf("error opening output file %q: %v", path, err)
+	}
+	defer f.Close()
+
+	_, err = io.Copy(hash, f)
+	if err != nil {
+		return "", fmt.Errorf("error hashing output file %q: %v", path, err)
+	}
+
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+func (o *Output) Convert(src, dst, imgToPaaPath string) (string, string, error) {
+	dstFile := swapExtension(dst, ".paa")
+	err := convertWithPath(
 		src,
-		filepath.Join(o.path, swapExtension(dst, ".paa")),
+		filepath.Join(o.path, dstFile),
 		imgToPaaPath,
 	)
+	if err != nil {
+		return "", "", err
+	}
+
+	hash, err := o.Hash(dstFile)
+
+	return dstFile, hash, err
 }
 
 func (o *Output) PathsToClean(task *Task) ([]string, error) {

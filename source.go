@@ -75,7 +75,7 @@ func (s *Source) Prepare() (*Task, error) {
 		if err != nil {
 			return fmt.Errorf("error hashing input file %q: %v", path, err)
 		}
-		task.Manifest[path] = fmt.Sprintf("%x", hash.Sum(nil))
+		task.Manifest[path] = ManifestEntry{SourcePath: path, SourceHash: fmt.Sprintf("%x", hash.Sum(nil))}
 
 		return nil
 	})
