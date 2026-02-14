@@ -3,10 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/peterbourgon/ff/v3"
 )
@@ -20,11 +18,15 @@ func must(err error) {
 
 func main() {
 	flags := flag.NewFlagSet("mod-build", flag.ExitOnError)
+	flags.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: %s [options] <source-directory>\n", filepath.Base(os.Args[0]))
+		flags.PrintDefaults()
+	}
 	var (
 		imgToPaaPath = flags.String("image-to-paa", `C:\Program Files (x86)\Steam\steamapps\common\DayZ Tools\Bin\ImageToPAA\ImageToPAA.exe`, "Path to the ImageToPAA executable")
-		sourceRoot   = flags.String("source", "./source/", "Path to the source directory")
-		outputRoot   = flags.String("output", "./build/", "Path to the output directory")
+		outputRoot   = flags.String("output", `P:\`, "Path to the output directory root (where built addons will be placed)")
 		yes          = flags.Bool("yes", false, "Automatically confirm all prompts (use with caution)")
+		clean        = flags.Bool("clean", false, "Clean output directory before building (deletes files which are not present in the source)")
 		_            = flags.String("config", "", "config file (optional)")
 	)
 
@@ -33,86 +35,83 @@ func main() {
 		ff.WithConfigFileParser(ff.PlainParser),
 	)
 	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		fmt.Fprintln(os.Stderr, "")
 		flags.Usage()
 		os.Exit(1)
 	}
 
+	sourceDir := flags.Arg(0)
+	if sourceDir == "" {
+		fmt.Fprintln(os.Stderr, "error: source directory is required")
+		fmt.Fprintln(os.Stderr, "")
+		flags.Usage()
+		os.Exit(1)
+	}
+
+	addonName := filepath.Base(sourceDir) // TODO: Or from $PBOPREFIX@.txt?
+	outputDirectory := filepath.Join(*outputRoot, addonName)
+
 	fmt.Println("===================================================")
 	fmt.Printf("ImageToPAA Path: %s\n", *imgToPaaPath)
-	fmt.Printf("    Source Path: %s\n", *sourceRoot)
-	fmt.Printf("    Output Path: %s\n", *outputRoot)
+	fmt.Printf("    Source Path: %s\n", sourceDir)
+	fmt.Printf("    Output Root: %s\n", *outputRoot)
 	fmt.Printf("   Auto-confirm: %t\n", *yes)
+	fmt.Printf("          Clean: %t\n", *clean)
+	fmt.Println("---------------------------------------------------")
+	fmt.Printf("      Addon Name: %s\n", addonName)
+	fmt.Printf("Output Directory: %s\n", outputDirectory)
 	fmt.Println("===================================================")
 
-	// ensure our build output directory exists
-	exists, err := BuildRootExists(*outputRoot)
+	source := NewSource(sourceDir)
+	must(source.EnsureValid())
+
+	output := NewOutput(outputDirectory)
+	must(output.EnsureExists())
+
+	confirm, err := yesOrNo(*yes, fmt.Sprintf("⚠️ The contents of %q will be removed or replaced. Continue? [y/N] ", outputDirectory))
 	must(err)
-	if !exists {
-		fmt.Printf("Creating build output directory %q\n", *outputRoot)
-		must(os.MkdirAll(*outputRoot, 0755))
-	}
-
-	addons, err := GetAddonsToBuild(*sourceRoot)
-	must(err)
-
-	toClean, err := GetAddonOutputDirsToClean(*outputRoot, addons)
-	must(err)
-
-	skip := []string{}
-
-	for _, addon := range toClean {
-		confirm, err := yesOrNo(*yes, fmt.Sprintf("⚠️ The build directory %q will be removed and recreated. Continue? [y/N] ", filepath.Join(*outputRoot, addon)))
-		must(err)
-		if confirm {
-			must(os.RemoveAll(filepath.Join(*outputRoot, addon)))
-		} else {
-			skip = append(skip, addon)
-		}
-	}
-
-	if len(addons)-len(skip) == 0 {
-		fmt.Println("Nothing to build!")
+	if !confirm {
 		os.Exit(0)
 	}
 
-	for _, name := range addons {
-		if slices.Contains(skip, name) {
-			fmt.Printf("⏭️ Skipping: %q\n", name)
+	task, err := source.Prepare()
+	must(err)
+
+	outputManifest, err := output.LoadManifest()
+	must(err)
+
+	if *clean {
+		toClean, err := output.PathsToClean(task)
+		must(err)
+
+		for _, path := range toClean {
+			fmt.Printf("🧹 Deleting   : %q\n", path)
+			must(output.Remove(path))
+		}
+	}
+
+	for _, path := range task.Copy {
+		if outputManifest[path] == task.Manifest[path] {
+			fmt.Printf("⏭️ Skipping   : %q\n", path)
 			continue
 		}
+		fmt.Printf("📄 Copying    : %q\n", path)
+		must(output.Copy(source.RealPath(path), path))
+	}
 
-		addonOutputPath := filepath.Join(*outputRoot, name)
-		addonInputPath := filepath.Join(*sourceRoot, name)
-
-		fmt.Printf("🛠️ Building: %s\n", name)
-		fmt.Printf("   📂 Creating build output directory %q\n", addonOutputPath)
-		must(os.MkdirAll(addonOutputPath, 0755))
-
-		err = fs.WalkDir(os.DirFS(addonInputPath), ".", func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err.Error())
-				os.Exit(1)
-			}
-
-			infile := filepath.Join(addonInputPath, path)
-
-			if shouldCopy(path) {
-				fmt.Printf("   📄 Copying    : %q\n", path)
-				must(copyFileWithPath(infile, filepath.Join(addonOutputPath, path)))
-			} else if shouldConvert(path) {
-				fmt.Printf("   🔁 Converting : %q\n", path)
-				must(convertWithPath(
-					infile,
-					filepath.Join(addonOutputPath, swapExtension(path, ".paa")),
-					*imgToPaaPath,
-				))
-			}
-
-			return nil
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error building addon %q: %s\n", name, err.Error())
+	for _, path := range task.Copy {
+		if outputManifest[path] == task.Manifest[path] {
+			fmt.Printf("⏭️ Unchanged  : %q\n", path)
+			continue
 		}
+		fmt.Printf("🔁 Converting : %q\n", path)
+		must(output.Convert(source.RealPath(path), path, *imgToPaaPath))
+	}
+
+	err = output.WriteManifest(task.Manifest)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️ Failed to write manifest file: %v\n", err)
 	}
 
 	fmt.Println("🎉 Done!")
