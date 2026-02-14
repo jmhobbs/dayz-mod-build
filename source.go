@@ -66,14 +66,14 @@ func (s *Source) Prepare() (*Task, error) {
 
 		f, err := os.Open(s.RealPath(path))
 		if err != nil {
-			return fmt.Errorf("error opening input file %q: %v", path, err)
+			return fmt.Errorf("error opening input file %q: %w", path, err)
 		}
 		defer f.Close()
 
 		hash.Reset()
 		_, err = io.Copy(hash, f)
 		if err != nil {
-			return fmt.Errorf("error hashing input file %q: %v", path, err)
+			return fmt.Errorf("error hashing input file %q: %w", path, err)
 		}
 		task.Manifest[path] = ManifestEntry{SourcePath: path, SourceHash: fmt.Sprintf("%x", hash.Sum(nil))}
 

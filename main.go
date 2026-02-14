@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -92,30 +94,22 @@ func main() {
 	}
 
 	for _, path := range task.Copy {
-		if outputManifest[path].SourceHash == task.Manifest[path].SourceHash {
-			hash, err := output.Hash(path)
-			must(err)
-			if hash == outputManifest[path].SourceHash {
-				fmt.Printf("⏭️ Unchanged  : %q\n", path)
-				continue
-			}
+		if isUnchanged(output, path, task.Manifest[path].SourceHash, outputManifest[path].SourceHash, outputManifest[path].SourceHash) {
+			fmt.Printf("⏭️ Unchanged  : %q\n", path)
+			continue
 		}
 		fmt.Printf("📄 Copying    : %q\n", path)
 		must(output.Copy(source.RealPath(path), path))
 	}
 
 	for _, path := range task.Convert {
-		if outputManifest[path].SourceHash == task.Manifest[path].SourceHash {
-			hash, err := output.Hash(outputManifest[path].OutputPath)
-			must(err)
-			if hash == outputManifest[path].OutputHash {
-				entry := task.Manifest[path]
-				entry.OutputPath = outputManifest[path].OutputPath
-				entry.OutputHash = outputManifest[path].OutputHash
-				task.Manifest[path] = entry
-				fmt.Printf("⏭️ Unchanged  : %q\n", path)
-				continue
-			}
+		if isUnchanged(output, outputManifest[path].OutputPath, task.Manifest[path].SourceHash, outputManifest[path].SourceHash, outputManifest[path].OutputHash) {
+			fmt.Printf("⏭️ Unchanged  : %q\n", path)
+			entry := task.Manifest[path]
+			entry.OutputPath = outputManifest[path].OutputPath
+			entry.OutputHash = outputManifest[path].OutputHash
+			task.Manifest[path] = entry
+			continue
 		}
 		fmt.Printf("🔁 Converting : %q\n", path)
 		outputPath, outputHash, err := output.Convert(source.RealPath(path), path, *imgToPaaPath)
@@ -132,4 +126,16 @@ func main() {
 	}
 
 	fmt.Println("🎉 Done!")
+}
+
+func isUnchanged(output *Output, outputPath, taskSourceHash, outputSourceHash, outputHash string) bool {
+	if outputSourceHash == taskSourceHash {
+		hash, err := output.Hash(outputPath)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			must(err)
+		}
+		return hash == outputHash
+
+	}
+	return false
 }

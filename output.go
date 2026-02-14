@@ -23,7 +23,7 @@ func (o *Output) EnsureExists() error {
 		if os.IsNotExist(err) {
 			err = os.MkdirAll(o.path, 0755)
 			if err != nil {
-				return fmt.Errorf("error: could not create output directory %q: %v", o.path, err)
+				return fmt.Errorf("error: could not create output directory %q: %w", o.path, err)
 			}
 			return nil
 		}
@@ -64,13 +64,13 @@ func (o *Output) Hash(path string) (string, error) {
 
 	f, err := os.Open(filepath.Join(o.path, path))
 	if err != nil {
-		return "", fmt.Errorf("error opening output file %q: %v", path, err)
+		return "", fmt.Errorf("error opening output file %q: %w", path, err)
 	}
 	defer f.Close()
 
 	_, err = io.Copy(hash, f)
 	if err != nil {
-		return "", fmt.Errorf("error hashing output file %q: %v", path, err)
+		return "", fmt.Errorf("error hashing output file %q: %w", path, err)
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
