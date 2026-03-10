@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 type Output struct {
@@ -94,7 +95,9 @@ func (o *Output) Convert(src, dst, imgToPaaPath string) (string, string, error) 
 
 func (o *Output) PathsToClean(task *Task) ([]string, error) {
 	toClean := []string{}
-	return toClean, fs.WalkDir(os.DirFS(o.path), ".", func(path string, d fs.DirEntry, err error) error {
+	dirs := make(map[string]bool)
+
+	err := fs.WalkDir(os.DirFS(o.path), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -104,12 +107,13 @@ func (o *Output) PathsToClean(task *Task) ([]string, error) {
 		}
 
 		if d.IsDir() {
-			// TODO: Remove empty directories
+			dirs[path] = true
 			return nil
 		}
 
 		// straight copy
 		if _, ok := task.Manifest[path]; ok {
+			dirs[filepath.Dir(path)] = false
 			return nil
 		}
 
@@ -121,6 +125,7 @@ func (o *Output) PathsToClean(task *Task) ([]string, error) {
 
 		for _, possiblePath := range possibleSources {
 			if _, ok := task.Manifest[possiblePath]; ok {
+				dirs[filepath.Dir(path)] = false
 				return nil
 			}
 		}
@@ -129,6 +134,17 @@ func (o *Output) PathsToClean(task *Task) ([]string, error) {
 
 		return nil
 	})
+
+	emptyDirs := []string{}
+	for path, empty := range dirs {
+		if empty {
+			emptyDirs = append(emptyDirs, path)
+		}
+	}
+	slices.Reverse(emptyDirs)
+	toClean = append(toClean, emptyDirs[:]...)
+
+	return toClean, err
 }
 
 func (o *Output) Remove(path string) error {
