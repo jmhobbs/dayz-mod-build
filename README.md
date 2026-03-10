@@ -5,6 +5,7 @@ A build pre-processor tool for DayZ mods.  This is a work in progress.
 - Copies known file types to output directory
 - Converts .png or .jpg files to .paa
 - Only copies/convert files that have changed
+- Skips root level directories starting with `_` (eventually these will be copied verbatim to the packed mod folder)
 
 # Usage
 

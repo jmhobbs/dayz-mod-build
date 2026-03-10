@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Source struct {
@@ -48,6 +49,10 @@ func (s *Source) Prepare() (*Task, error) {
 		}
 
 		if d.IsDir() {
+			return nil
+		}
+
+		if strings.HasPrefix(path, "_") {
 			return nil
 		}
 
