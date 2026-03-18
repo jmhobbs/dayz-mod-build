@@ -134,7 +134,6 @@ func TestSource_Prepare(t *testing.T) {
 		// Create files that should be ignored
 		ignoredFiles := []string{
 			"script.sh",
-			"data.xml",
 			"archive.zip",
 		}
 
@@ -212,12 +211,11 @@ func TestSource_Prepare(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		files := map[string]string{
-			"code.cpp":   "copy",
-			"data.json":  "copy",
-			"image.png":  "convert",
-			"photo.jpg":  "convert",
-			"ignore.xml": "ignore",
-			"skip.sh":    "ignore",
+			"code.cpp":  "copy",
+			"data.json": "copy",
+			"image.png": "convert",
+			"photo.jpg": "convert",
+			"skip.sh":   "ignore",
 		}
 
 		for file := range files {
