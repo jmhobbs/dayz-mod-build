@@ -8,7 +8,27 @@ import (
 	"strings"
 )
 
-var formatsToCopy = []string{".cpp", ".txt", ".json", ".rvmat", ".p3d", ".c", ".paa", ".xml"}
+var formatsToCopy = []string{
+	".c",
+	".cpp",
+	".csv",
+	".edds",
+	".emat",
+	".fnt",
+	".html",
+	".imageset",
+	".json",
+	".layout",
+	".map",
+	".ogg",
+	".p3d",
+	".paa",
+	".ptc",
+	".rvmat",
+	".tga",
+	".txt",
+	".xml",
+}
 
 func shouldCopy(path string) bool {
 	return slices.Contains(formatsToCopy, strings.ToLower(filepath.Ext(path)))
