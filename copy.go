@@ -28,6 +28,7 @@ var formatsToCopy = []string{
 	".tga",
 	".txt",
 	".xml",
+	".cfg",
 }
 
 func shouldCopy(path string) bool {
