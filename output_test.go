@@ -98,3 +98,73 @@ func TestOutput_EnsureExists(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestOutput_PathsToClean(t *testing.T) {
+	t.Run("does not schedule non-empty ancestors of retained copied files", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		output := NewOutput(tmpDir)
+
+		keepPath := filepath.Join("level1", "level2", "keep.txt")
+		deletePath := filepath.Join("level1", "delete.txt")
+
+		writeOutputTestFile(t, tmpDir, keepPath, "keep")
+		writeOutputTestFile(t, tmpDir, deletePath, "delete")
+
+		task := &Task{
+			Manifest: Manifest{
+				keepPath: {
+					SourcePath: keepPath,
+					SourceHash: "0123456789abcdef",
+				},
+			},
+		}
+
+		toClean, err := output.PathsToClean(task)
+		require.NoError(t, err)
+
+		assert.Contains(t, toClean, deletePath)
+		assert.NotContains(t, toClean, filepath.Join("level1"))
+		assert.NotContains(t, toClean, ".")
+	})
+
+	t.Run("does not schedule non-empty ancestors of retained converted files", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		output := NewOutput(tmpDir)
+
+		keepSourcePath := filepath.Join("textures", "nested", "keep.png")
+		keepOutputPath := swapExtension(keepSourcePath, ".paa")
+		deletePath := filepath.Join("textures", "old.paa")
+
+		writeOutputTestFile(t, tmpDir, keepOutputPath, "keep")
+		writeOutputTestFile(t, tmpDir, deletePath, "delete")
+
+		task := &Task{
+			Manifest: Manifest{
+				keepSourcePath: {
+					SourcePath: keepSourcePath,
+					SourceHash: "fedcba9876543210",
+					OutputPath: keepOutputPath,
+					OutputHash: "0011223344556677",
+				},
+			},
+		}
+
+		toClean, err := output.PathsToClean(task)
+		require.NoError(t, err)
+
+		assert.Contains(t, toClean, deletePath)
+		assert.NotContains(t, toClean, filepath.Join("textures"))
+		assert.NotContains(t, toClean, ".")
+	})
+}
+
+func writeOutputTestFile(t *testing.T, root, relativePath, contents string) {
+	t.Helper()
+
+	fullPath := filepath.Join(root, relativePath)
+	err := os.MkdirAll(filepath.Dir(fullPath), 0755)
+	require.NoError(t, err)
+
+	err = os.WriteFile(fullPath, []byte(contents), 0644)
+	require.NoError(t, err)
+}
