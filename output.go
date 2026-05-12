@@ -7,7 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
+	"sort"
+	"strings"
 )
 
 type Output struct {
@@ -94,40 +95,41 @@ func (o *Output) Convert(src, dst, imgToPaaPath string) (string, string, error) 
 }
 
 func (o *Output) PathsToClean(task *Task) ([]string, error) {
+	// files and directories to delete
 	toClean := []string{}
-	dirs := make(map[string]bool)
+	// a map of output files
+	requiredOutputs := make(map[string]struct{}, len(task.Manifest))
+	// a map of the directories required for those files
+	requiredDirs := make(map[string]struct{}, len(task.Manifest))
+	// directories which exist in the output root
+	dirs := []string{}
+
+	for _, entry := range task.Manifest {
+		outputPath := entry.OutputPath
+		if outputPath == "" {
+			outputPath = entry.SourcePath
+		}
+		requiredOutputs[outputPath] = struct{}{}
+		markAllDirectoriesInPathAsRequired(requiredDirs, filepath.Dir(outputPath))
+	}
 
 	err := fs.WalkDir(os.DirFS(o.path), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if d.Name() == path && path == ".build.manifest" {
+		// ignore manifest file and the root dir
+		if path == ".build.manifest" || path == "." {
 			return nil
 		}
 
 		if d.IsDir() {
-			dirs[path] = true
+			dirs = append(dirs, path)
 			return nil
 		}
 
-		// straight copy
-		if _, ok := task.Manifest[path]; ok {
-			dirs[filepath.Dir(path)] = false
+		if _, ok := requiredOutputs[path]; ok {
 			return nil
-		}
-
-		// conversions
-		possibleSources := []string{
-			swapExtension(path, ".png"),
-			swapExtension(path, ".jpg"),
-		}
-
-		for _, possiblePath := range possibleSources {
-			if _, ok := task.Manifest[possiblePath]; ok {
-				dirs[filepath.Dir(path)] = false
-				return nil
-			}
 		}
 
 		toClean = append(toClean, path)
@@ -135,18 +137,35 @@ func (o *Output) PathsToClean(task *Task) ([]string, error) {
 		return nil
 	})
 
-	emptyDirs := []string{}
-	for path, empty := range dirs {
-		if empty {
-			emptyDirs = append(emptyDirs, path)
+	// sort the discovered directories by depth
+	sort.Slice(dirs, func(i, j int) bool {
+		iDepth := strings.Count(dirs[i], string(filepath.Separator))
+		jDepth := strings.Count(dirs[j], string(filepath.Separator))
+		if iDepth != jDepth {
+			return iDepth > jDepth
 		}
+		return dirs[i] > dirs[j]
+	})
+
+	// check each directory against the list of retained paths and add
+	// to cleanup if we do not need them for output files
+	for _, path := range dirs {
+		if _, ok := requiredDirs[path]; ok {
+			continue
+		}
+		toClean = append(toClean, path)
 	}
-	slices.Reverse(emptyDirs)
-	toClean = append(toClean, emptyDirs[:]...)
 
 	return toClean, err
 }
 
 func (o *Output) Remove(path string) error {
 	return os.Remove(filepath.Join(o.path, path))
+}
+
+func markAllDirectoriesInPathAsRequired(requiredDirs map[string]struct{}, path string) {
+	for path != "." {
+		requiredDirs[path] = struct{}{}
+		path = filepath.Dir(path)
+	}
 }

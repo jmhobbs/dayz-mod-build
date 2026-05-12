@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -155,6 +156,26 @@ func TestOutput_PathsToClean(t *testing.T) {
 		assert.Contains(t, toClean, deletePath)
 		assert.NotContains(t, toClean, filepath.Join("textures"))
 		assert.NotContains(t, toClean, ".")
+	})
+
+	t.Run("orders empty directories deepest first", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		output := NewOutput(tmpDir)
+
+		nestedFilePath := filepath.Join("empty", "nested", "old.txt")
+		writeOutputTestFile(t, tmpDir, nestedFilePath, "delete")
+
+		toClean, err := output.PathsToClean(&Task{Manifest: Manifest{}})
+		require.NoError(t, err)
+
+		nestedDir := filepath.Join("empty", "nested")
+		parentDir := filepath.Join("empty")
+
+		assert.Contains(t, toClean, nestedFilePath)
+		assert.Contains(t, toClean, nestedDir)
+		assert.Contains(t, toClean, parentDir)
+		assert.NotContains(t, toClean, ".")
+		assert.Less(t, slices.Index(toClean, nestedDir), slices.Index(toClean, parentDir))
 	})
 }
 
